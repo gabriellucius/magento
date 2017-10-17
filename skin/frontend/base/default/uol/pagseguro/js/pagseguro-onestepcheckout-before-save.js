@@ -1,25 +1,86 @@
 /**
+ * Call events before magento OneSstepChekouPayment switchToMethod event - only call
+ * when the type of payment selected is relative to PagSeguro methods, preventing to
+ * save all the time a PagSeguro Method is selected
+ * @type OnestepcheckoutShipment
+ */
+OnestepcheckoutShipment.prototype.switchToMethod = OnestepcheckoutShipment.prototype.switchToMethod.wrap(
+  function(switchToMethod, methodCode, forced){
+    if (isPagSeguroCurrentPaymentMethod() && forced === true) {
+      return false; //do nothing
+    }
+
+    // normal flow
+    return switchToMethod(methodCode, forced);
+  });
+
+
+/**
+ * Call events before magento OneSstepChekouPayment savePayment event - only call
+ * when the type of payment selected is relative to PagSeguro methods, preventing to
+ * save callingn an aJax request all the time a PagSeguro Method or input is selected
+ * @type OnestepcheckoutPayment
+ */
+OnestepcheckoutPayment.prototype.savePayment = OnestepcheckoutPayment.prototype.savePayment.wrap(function(savePayment, forced){
+//  if (document.querySelector('input[name="payment[method]"]:checked').value === "pagseguro_credit_card" && document.getElementById('creditCardBrand').value === "") {
+//    console.log('hora de atualizar os valores');
+//    return savePayment();
+//  }
+//
+  if (isPagSeguroCurrentPaymentMethod() && forced !== true ) {
+    return false; //do nothing
+  }
+console.log('savePayment()');
+  return savePayment();
+});
+
+/**
+ * Call events before magento OneSstepChekouPayment forcesavePayment event - only call
+ * when the type of payment selected is relative to PagSeguro methods, preventing to
+ * save callingn an aJax request all the time a PagSeguro Method or input is selected
+ * @type OnestepcheckoutPayment
+ */
+OnestepcheckoutPayment.prototype.forcesavePayment = OnestepcheckoutPayment.prototype.forcesavePayment.wrap(function(forcesavePayment, forced){
+//  if (document.querySelector('input[name="payment[method]"]:checked').value === "pagseguro_credit_card" && document.getElementById('creditCardBrand').value === "") {
+//    console.log('force save');
+//    return switchToMethod(methodCode, forced);
+//    }
+
+
+  if (isPagSeguroCurrentPaymentMethod() && forced !== true) {
+    return false; //do nothing
+  }
+  console.log('FORCEsavePayment()');
+  return forcesavePayment();
+});
+
+/**
  * Observer for checkout price modifications, like changes in shipment price or taxes
  * to call the installments value with the updated value
  * @object OnestepcheckoutForm.hidePriceChangeProcess
- * 
  */
 OnestepcheckoutForm.prototype.hidePriceChangeProcess = OnestepcheckoutForm.prototype.hidePriceChangeProcess.wrap(function(hidePriceChangeProcess){
     var granTotalAmountUpdated = convertPriceStringToFloat(this.granTotalAmount.textContent);
-    
+
     if (document.getElementById('grand_total') !== null && parseFloat(document.getElementById('grand_total').value) !== granTotalAmountUpdated) {
       document.getElementById('grand_total').value = granTotalAmountUpdated;
       if (document.getElementById('creditCardNum') !== null && document.getElementById('creditCardNum').value.length > 6) {
         getInstallments(document.getElementById('creditCardBrand').value);
       }
     }
- 
+
     return hidePriceChangeProcess();
 });
 
 //call pagseguro validation events before magento OneStepChekouPayment validate event, before finish checkout
 OnestepcheckoutForm.prototype.validate = OnestepcheckoutForm.prototype.validate.wrap(function(validate){
-    if (validatePagSeguroActiveMethod()) {
+  console.log('validando');
+  //OSCPayment.forcesavePayment();
+  //OSCShipment.switchToMethod(OSCShipment.currentMethod, true);
+  if (validatePagSeguroActiveMethod()) {
+    if (isPagSeguroCurrentPaymentMethod()) {
+      OSCPayment.forcesavePayment(true);
+    }
       return validate();
     }
 });
@@ -29,7 +90,6 @@ OnestepcheckoutForm.prototype.validate = OnestepcheckoutForm.prototype.validate.
  * @returns {Boolean}
  */
 function validatePagSeguroActiveMethod() {
-  //OSCPayment.currentMethod
   switch (document.querySelector('#checkout-payment-method-load .radio:checked').value) {
     case "pagseguro_credit_card":
       return validateCreditCardForm();
@@ -64,4 +124,17 @@ function convertPriceStringToFloat(priceString){
     priceString = parseFloat(priceString);
   }
   return priceString;
+}
+
+/**
+ * Return if is selected an PagSeguro Payment Method as a current payment method
+ * in the checkout payment section
+ * @returns {bolean}
+ */
+function isPagSeguroCurrentPaymentMethod() {
+  currentPaymentMethod = document.querySelector('input[name="payment[method]"]:checked').value;
+  return (currentPaymentMethod === 'pagseguro_credit_card'
+    || currentPaymentMethod === 'pagseguro_boleto'
+    || currentPaymentMethod === 'pagseguro_online_debit'
+    || currentPaymentMethod === 'pagseguro_default_lightbox');
 }
